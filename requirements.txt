@@ -1,0 +1,5 @@
+# Core package (fleet_triage) is standard library only.
+# These are needed for the Streamlit dashboard.
+streamlit>=1.36
+pandas>=2.0
+plotly>=5.20
