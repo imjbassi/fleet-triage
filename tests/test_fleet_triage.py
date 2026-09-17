@@ -150,7 +150,87 @@ class RcaTests(unittest.TestCase):
         self.assertEqual(finding.hypotheses[0].label, "software")
 
 
+class RobustnessTests(unittest.TestCase):
+    def test_mixed_naive_aware_and_z_timestamps(self):
+        lines = [
+            json.dumps({"ts": "2026-07-01T12:05:00", "robot_id": "R-01", "event": "heartbeat"}),
+            json.dumps({"ts": "2026-07-01T12:00:00Z", "robot_id": "R-01", "event": "heartbeat"}),
+            make_line(T0 + timedelta(minutes=10), "R-01", "heartbeat"),
+        ]
+        result = parse_lines(lines)
+        self.assertEqual(result.skipped, 0)
+        self.assertEqual(result.events[0].ts, T0)
+        compute_robot_health(result.events)
+
+    def test_non_object_lines_skipped(self):
+        result = parse_lines(["[1, 2]", "42", '{"ts": 5, "robot_id": "R-01", "event": "x"}'])
+        self.assertEqual(result.skipped, 3)
+
+    def test_unknown_recovery_action_does_not_crash(self):
+        lines = [
+            make_line(T0, "R-01", "fault", fault_code="GRIPPER_STALL"),
+            make_line(T0 + timedelta(minutes=5), "R-01", "recovery",
+                      fault_code="GRIPPER_STALL", recovery_action="swap_robot"),
+        ]
+        finding = analyze_fault(parse_lines(lines).events, "R-01", "GRIPPER_STALL")
+        self.assertEqual(finding.hypotheses[0].label, "unclassified")
+
+    def test_overlapping_faults_not_double_counted(self):
+        lines = [
+            make_line(T0, "R-01", "heartbeat"),
+            make_line(T0 + timedelta(hours=1), "R-01", "fault", fault_code="WIFI_DISCONNECT"),
+            make_line(T0 + timedelta(hours=1, minutes=10), "R-01", "fault",
+                      fault_code="COMMS_TIMEOUT"),
+            make_line(T0 + timedelta(hours=1, minutes=20), "R-01", "recovery",
+                      fault_code="COMMS_TIMEOUT", recovery_action="auto_retry"),
+            make_line(T0 + timedelta(hours=1, minutes=30), "R-01", "recovery",
+                      fault_code="WIFI_DISCONNECT", recovery_action="auto_retry"),
+            make_line(T0 + timedelta(hours=10), "R-01", "heartbeat"),
+        ]
+        health = compute_robot_health(parse_lines(lines).events)
+        self.assertAlmostEqual(health[0].downtime_minutes, 30.0, places=1)
+
+
+class CliTests(unittest.TestCase):
+    def _log(self):
+        import tempfile, os
+        fd, path = tempfile.mkstemp(suffix=".jsonl")
+        with os.fdopen(fd, "w", encoding="utf-8") as fp:
+            for i in range(3):
+                fp.write(make_line(T0 + timedelta(hours=i), "R-01", "fault",
+                                   fault_code="GRIPPER_STALL") + "\n")
+            fp.write(make_line(T0, "R-02", "fault", fault_code="COMMS_TIMEOUT") + "\n")
+        self.addCleanup(os.remove, path)
+        return path
+
+    def _run(self, *argv):
+        from contextlib import redirect_stderr, redirect_stdout
+        from fleet_triage.cli import main
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_report_robot_only_picks_fault_for_that_robot(self):
+        code, out, _ = self._run("report", self._log(), "--robot", "R-02")
+        self.assertEqual(code, 0)
+        self.assertIn("COMMS_TIMEOUT on R-02", out)
+
+    def test_report_unknown_pair_errors(self):
+        code, _, err = self._run("report", self._log(), "--robot", "R-99", "--fault", "X")
+        self.assertEqual(code, 1)
+        self.assertIn("No X fault events", err)
+
+    def test_missing_file_errors(self):
+        code, _, err = self._run("triage", "does/not/exist.jsonl")
+        self.assertEqual(code, 1)
+
+
 class GeneratorTests(unittest.TestCase):
+    def test_rejects_invalid_arguments(self):
+        with self.assertRaises(ValueError):
+            list(generate_fleet_log(robots=0))
+
     def test_generated_log_round_trips_through_parser(self):
         buf = io.StringIO()
         n = write_jsonl(

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fleet-triage"
+dynamic = ["version"]
+description = "Synthetic robot fleet log analysis and RCA tooling"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dashboard = ["streamlit>=1.36", "pandas>=2.0", "plotly>=5.20"]
+
+[project.scripts]
+fleet-triage = "fleet_triage.cli:main"
+
+[tool.setuptools]
+packages = ["fleet_triage"]
+
+[tool.setuptools.dynamic]
+version = { attr = "fleet_triage.__version__" }

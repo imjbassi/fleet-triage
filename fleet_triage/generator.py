@@ -31,6 +31,12 @@ def generate_fleet_log(
     start: datetime | None = None,
 ) -> Iterator[LogEvent]:
     """Yield synthetic LogEvents for the whole fleet in timestamp order."""
+    if robots < 1:
+        raise ValueError("robots must be at least 1")
+    if hours <= 0:
+        raise ValueError("hours must be positive")
+    if heartbeat_seconds < 1:
+        raise ValueError("heartbeat_seconds must be at least 1")
     rng = random.Random(seed)
     if start is None:
         start = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -61,6 +67,7 @@ def generate_fleet_log(
                 base_fault_rate_per_hour
                 * (lemon_multiplier if rid in lemons else 1.0),
                 lemon_signature.get(rid),
+                fault_codes,
                 burst_start,
                 burst_end,
             )
@@ -77,6 +84,7 @@ def _robot_stream(
     heartbeat_seconds: int,
     fault_rate_per_hour: float,
     signature_fault: str | None,
+    fault_codes: list[str],
     burst_start: datetime,
     burst_end: datetime,
 ) -> list[LogEvent]:
@@ -130,7 +138,7 @@ def _robot_stream(
                 elif signature_fault and rng.random() < 0.6:
                     code = signature_fault
                 else:
-                    code = rng.choice(list(FAULT_CATALOG))
+                    code = rng.choice(fault_codes)
                 spec = FAULT_CATALOG[code]
                 action = rng.choices(RECOVERY_ACTIONS, spec.recovery_weights)[0]
                 lo, hi = spec.downtime_minutes

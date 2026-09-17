@@ -28,6 +28,10 @@ python -m fleet_triage generate --out data/sample_fleet.jsonl --robots 10 --hour
 
 # Full fleet triage summary
 python -m fleet_triage triage data/sample_fleet.jsonl
+python -m fleet_triage triage data/sample_fleet.jsonl --min-robots 4 --spike-ratio 5
+
+# Optional: install the fleet-triage command
+pip install -e .
 
 # RCA report for the worst recurring fault (or pick one explicitly)
 python -m fleet_triage report data/sample_fleet.jsonl

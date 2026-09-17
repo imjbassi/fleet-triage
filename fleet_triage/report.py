@@ -35,12 +35,14 @@ def triage_summary(
     parsed: ParseResult,
     threshold: int = 3,
     window_hours: float = 24.0,
+    min_robots: int = 3,
+    spike_ratio: float = 3.0,
 ) -> str:
     """Full fleet triage: classification, recurrence, anomalies, health."""
     events = parsed.events
     buckets = classify_faults(events)
     recurring = find_recurring_faults(events, threshold, window_hours)
-    anomalies = find_fleet_anomalies(events)
+    anomalies = find_fleet_anomalies(events, min_robots=min_robots, spike_ratio=spike_ratio)
     health = compute_robot_health(events)
 
     out: list[str] = []
@@ -122,7 +124,7 @@ def triage_summary(
                 f"{h.uptime_pct:.1f}",
                 str(h.fault_count),
                 f"{h.downtime_minutes:.0f}",
-                f"{h.mtbf_hours:.1f}" if h.mtbf_hours else "n/a",
+                f"{h.mtbf_hours:.1f}" if h.mtbf_hours is not None else "n/a",
                 ", ".join(c for c, _ in h.faults_by_code.most_common(2)) or "none",
             ]
         )
@@ -149,7 +151,7 @@ def triage_summary(
         out.append("SUGGESTED NEXT ACTION")
         out.append(THIN)
         out.append(
-            f"  Run: fleet-triage report <logfile> --robot {worst.robot_id} "
+            f"  Run: python -m fleet_triage report <logfile> --robot {worst.robot_id} "
             f"--fault {worst.fault_code}"
         )
     return "\n".join(out)

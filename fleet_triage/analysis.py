@@ -164,6 +164,7 @@ def compute_robot_health(events: list[LogEvent]) -> list[RobotHealth]:
         )
 
         open_faults: dict[str, datetime] = {}
+        down_intervals: list[tuple[datetime, datetime]] = []
         fault_stamps: list[datetime] = []
         for e in evs:
             if e.event == "fault" and e.fault_code:
@@ -173,13 +174,25 @@ def compute_robot_health(events: list[LogEvent]) -> list[RobotHealth]:
                 open_faults.setdefault(e.fault_code, e.ts)
                 fault_stamps.append(e.ts)
             elif e.event == "recovery" and e.fault_code in open_faults:
-                started = open_faults.pop(e.fault_code)
-                health.downtime_minutes += (e.ts - started).total_seconds() / 60.0
+                down_intervals.append((open_faults.pop(e.fault_code), e.ts))
 
         # Faults never recovered within the log window count as down
         # until the end of the robot's log span.
-        for code, started in open_faults.items():
-            health.downtime_minutes += (evs[-1].ts - started).total_seconds() / 60.0
+        for started in open_faults.values():
+            down_intervals.append((started, evs[-1].ts))
+
+        # Merge overlapping intervals so concurrent faults are not
+        # double counted as downtime.
+        down_intervals.sort()
+        merged: list[list[datetime]] = []
+        for lo, hi in down_intervals:
+            if merged and lo <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], hi)
+            else:
+                merged.append([lo, hi])
+        health.downtime_minutes = sum(
+            (hi - lo).total_seconds() / 60.0 for lo, hi in merged
+        )
 
         health.uptime_pct = max(
             0.0, 100.0 * (1.0 - health.downtime_minutes / 60.0 / span_hours)

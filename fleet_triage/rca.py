@@ -118,7 +118,14 @@ def analyze_fault(
     total_recoveries = sum(recovery_profile.values())
     if total_recoveries:
         for action, count in recovery_profile.most_common():
-            label, rationale = RECOVERY_INFERENCE[action]
+            label, rationale = RECOVERY_INFERENCE.get(
+                action,
+                (
+                    "unclassified",
+                    f"Fault cleared via an unrecognized recovery action "
+                    f"({action!r}); no inference rule applies.",
+                ),
+            )
             finding.hypotheses.append(
                 RootCauseHypothesis(
                     label=label,
