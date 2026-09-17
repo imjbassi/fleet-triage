@@ -215,6 +215,7 @@ class CliTests(unittest.TestCase):
         code, out, _ = self._run("report", self._log(), "--robot", "R-02")
         self.assertEqual(code, 0)
         self.assertIn("COMMS_TIMEOUT on R-02", out)
+        self.assertIn("No fault specified; using R-02 / COMMS_TIMEOUT", out)
 
     def test_report_unknown_pair_errors(self):
         code, _, err = self._run("report", self._log(), "--robot", "R-99", "--fault", "X")

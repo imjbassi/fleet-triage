@@ -144,7 +144,13 @@ def main(argv: list[str] | None = None) -> int:
                 (robot_top, fault_top), _ = counts.most_common(1)[0]
                 robot = robot or robot_top
                 fault = fault or fault_top
-            print(f"No robot or fault specified; using {robot} / {fault}\n")
+            if args.robot:
+                missing = "No fault specified"
+            elif args.fault:
+                missing = "No robot specified"
+            else:
+                missing = "No robot or fault specified"
+            print(f"{missing}; using {robot} / {fault}\n")
         elif not any(
             e.robot_id == robot and e.fault_code == fault and e.event == "fault"
             for e in parsed.events
